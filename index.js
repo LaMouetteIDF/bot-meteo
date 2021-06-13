@@ -2,8 +2,7 @@ const { Client, MessageEmbed } = require("discord.js");
 const client = new Client();
 const {
     prefix,
-    token,
-    apiMeteo: { appid, units, lang },
+    apiMeteo: { units, lang },
 } = require("./config.json");
 const fetch = require("node-fetch");
 
@@ -21,7 +20,7 @@ client.on("message", async (message) => {
         if (!args.length) return message.reply(`Veuillez saisir une ville!`);
         const city = args.join(" ");
         let url = new URL(
-            `http://api.openweathermap.org/data/2.5/weather?appid=${appid}&q=${city}&units=${units}&lang=${lang}`
+            `http://api.openweathermap.org/data/2.5/weather?appid=${process.env.appid}&q=${city}&units=${units}&lang=${lang}`
         );
         const meteo = await fetch(url)
             .then((res) => res.json())
@@ -71,4 +70,4 @@ client.on("message", async (message) => {
     }
 });
 
-client.login(token);
+client.login(process.env.token);

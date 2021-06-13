@@ -1,9 +1,0 @@
-{
-    "prefix": "!",
-    "token": "your token for discord bot",
-    "apiMeteo": {
-        "appid": "your token for openweathermap",
-        "units": "metric",
-        "lang": "fr"
-    }
-}
