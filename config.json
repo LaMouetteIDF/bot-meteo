@@ -1,0 +1,7 @@
+{
+    "prefix": "!",
+    "apiMeteo": {
+        "units": "metric",
+        "lang": "fr"
+    }
+}
