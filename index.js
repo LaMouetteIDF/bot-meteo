@@ -63,7 +63,7 @@ client.on("message", async (message) => {
             .setDescription(
                 `${localTime}\n${meteo.weather[0].description}\n\nHumidité : ${
                     meteo.main.humidity
-                }%\nVent : ${meteo.wind.speed.toFixed()}%\n\nLever du soleil : ${sunrise}\nCoucher du soleil : ${sunset}`
+                }% 💦\nVent : ${meteo.wind.speed.toFixed()}% 💨\n\nLever du soleil : ${sunrise} ☀️\nCoucher du soleil : ${sunset} 🌑`
             )
             .setThumbnail(`${imgWeather}`);
         message.channel.send(meteoEmbed);
