@@ -1,72 +1,98 @@
-const { Client, MessageEmbed } = require("discord.js");
+const fs = require("fs");
+const { Client, Collection } = require("discord.js");
+const { prefix } = require("./config.json");
+
 const client = new Client();
-const {
-    prefix,
-    apiMeteo: { units, lang },
-} = require("./config.json");
-const fetch = require("node-fetch");
+client.commands = new Collection();
+client.cooldowns = new Collection();
+
+const commandFolders = fs.readdirSync("./commands");
+
+for (const folder of commandFolders) {
+    const commandFiles = fs
+        .readdirSync(`./commands/${folder}`)
+        .filter((file) => file.endsWith(".js"));
+    for (const file of commandFiles) {
+        const command = require(`./commands/${folder}/${file}`);
+        client.commands.set(command.name, command);
+    }
+}
 
 client.once("ready", () => {
     console.log("Ready!");
 });
 
-client.on("message", async (message) => {
+client.on("message", (message) => {
     if (!message.content.startsWith(prefix) || message.author.bot) return;
 
     const args = message.content.slice(prefix.length).trim().split(/ +/);
-    const command = args.shift().toLowerCase();
+    const commandName = args.shift().toLowerCase();
 
-    if (command === "meteo") {
-        if (!args.length) return message.reply(`Veuillez saisir une ville!`);
-        const city = args.join(" ");
-        let url = new URL(
-            `http://api.openweathermap.org/data/2.5/weather?appid=${process.env.appid}&q=${city}&units=${units}&lang=${lang}`
+    const command =
+        client.commands.get(commandName) ||
+        client.commands.find(
+            (cmd) => cmd.aliases && cmd.aliases.includes(commandName)
         );
-        const meteo = await fetch(url)
-            .then((res) => res.json())
-            .catch(() => message.reply(`\nErreur d'API`));
 
-        if (!meteo.name)
-            return message.reply(`\nError ${meteo.cod}\n${meteo.message}\n`);
+    if (!command) return;
 
-        function parseString(value, weekday = false) {
-            const localTimeString = new Date(value).toLocaleString("fr-FR", {
-                timeZone: "UTC",
-                weekday: weekday ? "long" : undefined,
-                hour: "numeric",
-                minute: "numeric",
-            });
-            return localTimeString;
+    if (command.guildOnly && message.channel.type === "dm") {
+        return message.reply(
+            "Je ne peux pas exécuter cette commande dans les DM !"
+        );
+    }
+
+    if (command.permissions) {
+        const authorPerms = message.channel.permissionsFor(message.author);
+        if (!authorPerms || !authorPerms.has(command.permissions)) {
+            return message.reply("Tu ne peux pas faire ça!");
+        }
+    }
+
+    if (command.args && !args.length) {
+        let reply = `Vous n'avez fourni aucun argument, ${message.author}!`;
+
+        if (command.usage) {
+            reply += `\nL'utilisation appropriée serait : \`${prefix}${command.name} ${command.usage}\``;
         }
 
-        const localTimezone = Math.ceil(meteo.timezone * 1000);
-        const localTime = parseString(Date.now() + localTimezone, true);
-        const sunrise = parseString(
-            Math.ceil(meteo.sys.sunrise * 1000) + localTimezone
-        );
-        const sunset = parseString(
-            Math.ceil(meteo.sys.sunset * 1000) + localTimezone
-        );
+        return message.channel.send(reply);
+    }
 
-        let ink = "#113177";
-        if (meteo.weather[0].icon.includes("d")) {
-            ink = "#3393AD";
+    const { cooldowns } = client;
+
+    if (!cooldowns.has(command.name)) {
+        cooldowns.set(command.name, new Collection());
+    }
+
+    const now = Date.now();
+    const timestamps = cooldowns.get(command.name);
+    const cooldownAmount = (command.cooldown || 3) * 1000;
+
+    if (timestamps.has(message.author.id)) {
+        const expirationTime =
+            timestamps.get(message.author.id) + cooldownAmount;
+
+        if (now < expirationTime) {
+            const timeLeft = (expirationTime - now) / 1000;
+            return message.reply(
+                `S'il vous plaît, attendez ${timeLeft.toFixed(
+                    1
+                )} seconde(s) avant de réutiliser la commande ${command.name}`
+            );
         }
+    }
 
-        let imgWeather = new URL(
-            `http://openweathermap.org/img/wn/${meteo.weather[0].icon}@2x.png`
+    timestamps.set(message.author.id, now);
+    setTimeout(() => timestamps.delete(message.author.id), cooldownAmount);
+
+    try {
+        command.execute(message, args);
+    } catch (error) {
+        console.error(error);
+        message.reply(
+            "une erreur s'est produite lors de l'exécution de cette commande !"
         );
-        const meteoEmbed = new MessageEmbed()
-            .setColor(`${ink}`)
-            .setTitle(`${parseFloat(meteo.main.temp.toFixed(1))}°C`)
-            .setAuthor(`${meteo.name}, ${meteo.sys.country}`)
-            .setDescription(
-                `${localTime}\n${meteo.weather[0].description}\n\nHumidité : ${
-                    meteo.main.humidity
-                }% 💦\nVent : ${meteo.wind.speed.toFixed()}% 💨\n\nLever du soleil : ${sunrise} ☀️\nCoucher du soleil : ${sunset} 🌑`
-            )
-            .setThumbnail(`${imgWeather}`);
-        message.channel.send(meteoEmbed);
     }
 });
 
