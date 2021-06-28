@@ -1,99 +1,133 @@
-const fs = require("fs");
-const { Client, Collection } = require("discord.js");
-const { prefix } = require("./config.json");
+const { Client, MessageEmbed } = require("discord.js");
+const fetch = require("node-fetch");
+const translate = require('@vitalets/google-translate-api');
+const { token, prefix, apiMeteo} = require("./config.json")
 
 const client = new Client();
-client.commands = new Collection();
-client.cooldowns = new Collection();
 
-const commandFolders = fs.readdirSync("./commands");
-
-for (const folder of commandFolders) {
-    const commandFiles = fs
-        .readdirSync(`./commands/${folder}`)
-        .filter((file) => file.endsWith(".js"));
-    for (const file of commandFiles) {
-        const command = require(`./commands/${folder}/${file}`);
-        client.commands.set(command.name, command);
-    }
-}
+let setCity = apiMeteo.cityDefault;
 
 client.once("ready", () => {
-    console.log("Ready!");
+    console.log(`Logged in as ${client.user.tag}!`);
 });
 
-client.on("message", (message) => {
+client.on("message", async (message) => {
     if (!message.content.startsWith(prefix) || message.author.bot) return;
 
     const args = message.content.slice(prefix.length).trim().split(/ +/);
     const commandName = args.shift().toLowerCase();
 
-    const command =
-        client.commands.get(commandName) ||
-        client.commands.find(
-            (cmd) => cmd.aliases && cmd.aliases.includes(commandName)
-        );
+    if (commandName === "meteo") {
+        let city;
+        // if (!args.length) return message.reply(`Veuillez saisir une ville!`);
 
-    if (!command) return;
-
-    if (command.guildOnly && message.channel.type === "dm") {
-        return message.reply(
-            "Je ne peux pas exécuter cette commande dans les DM !"
-        );
-    }
-
-    if (command.permissions) {
-        const authorPerms = message.channel.permissionsFor(message.author);
-        if (!authorPerms || !authorPerms.has(command.permissions)) {
-            return message.reply("Tu ne peux pas faire ça!");
+        if (!args.length) {
+            city = setCity;
+        } else {
+            city = args.join(" ");
         }
-    }
+        // const city = args.join(" ");
+        
+        let urlGeo = new URL(`http://api.openweathermap.org/geo/1.0/direct?q=${city}&limit=1&appid=${process.env.appid}`)
+        const apiGeo = await fetchApi(urlGeo)
+        
+        let urlOneCall = new URL(`https://api.openweathermap.org/data/2.5/onecall?appid=${process.env.appid}&lat=${apiGeo[0].lat}&lon=${apiGeo[0].lon}&lang=${apiMeteo.lang}&units=${apiMeteo.units}&exclude=minutely`)
+        const apiOneCall = await fetchApi(urlOneCall)
 
-    if (command.args && !args.length) {
-        let reply = `Vous n'avez fourni aucun argument, ${message.author}!`;
+        /* const sunrise = parseString(msConv(apiOneCall.daily[1].dt));
+        console.log(sunrise); */
+        const timezone = msConv(apiOneCall.timezone_offset);
 
-        if (command.usage) {
-            reply += `\nL'utilisation appropriée serait : \`${prefix}${command.name} ${command.usage}\``;
+        /* for (let i = 0; i < apiOneCall.daily.length; i++) {
+            const date = parseString(msConv(apiOneCall.daily[i].dt) + timezone);
+            console.log(date);
+        } */
+
+        /* for (let i = 0; i < apiOneCall.hourly.length; i++) {
+            const date = parseString(msConv(apiOneCall.hourly[i].dt) + timezone);
+            console.log(date);
+        } */
+        const urlFlag = new URL(`https://flagcdn.com/h20/${apiGeo[0].country.toLowerCase()}.webp`)
+        const urlIcon = new URL(`http://openweathermap.org/img/wn/${apiOneCall.current.weather[0].icon}@2x.png`)
+        const localTime = parseString(Date.now() + timezone, true);
+
+        const meteoEmbed = new MessageEmbed()
+            .setColor('#0099ff')
+            .setTitle(`${parseFloat(apiOneCall.current.feels_like.toFixed(1))}°C`)
+            .setAuthor(`${apiGeo[0].name}, ${apiGeo[0].country}`, `${urlFlag}`)
+            .setDescription(`${apiOneCall.current.weather[0].description}`)
+            .setThumbnail(`${urlIcon}`)
+            .addFields(
+                { name: 'Humidité 💦', value: `${apiOneCall.current.humidity}%`, inline: true },
+                { name: 'Vent 💨', value: `${apiOneCall.current.wind_speed.toFixed()}%`, inline: true }
+            )
+            // .addField('Inline field title', 'Some value here', true)
+	        .setFooter(`${localTime}`);
+        message.channel.send(meteoEmbed)
+
+        /* translate(`${apiOneCall.alerts[0].description}`, {to: 'fr'}).then(res => {
+            console.log(res.text);
+            message.channel.send(res.text)
+            //=> I speak English
+            console.log(res.from.language.iso);
+            //=> nl
+        }).catch(err => {
+            console.error(err);
+        }); */
+        
+        
+        
+        /* if (args[0] === "p") {
+        console.log("mdr");
+            return
+        } */
+
+        /* console.log("toto");
+        message.channel.send(`${message.author}`); */
+
+        function fetchApi(url) {
+            const api = fetch(url).then((res) => res.json()).catch(() => console.log("erreur"));
+            return api;
         }
 
-        return message.channel.send(reply);
-    }
-
-    const { cooldowns } = client;
-
-    if (!cooldowns.has(command.name)) {
-        cooldowns.set(command.name, new Collection());
-    }
-
-    const now = Date.now();
-    const timestamps = cooldowns.get(command.name);
-    const cooldownAmount = (command.cooldown || 3) * 1000;
-
-    if (timestamps.has(message.author.id)) {
-        const expirationTime =
-            timestamps.get(message.author.id) + cooldownAmount;
-
-        if (now < expirationTime) {
-            const timeLeft = (expirationTime - now) / 1000;
-            return message.reply(
-                `S'il vous plaît, attendez ${timeLeft.toFixed(
-                    1
-                )} seconde(s) avant de réutiliser la commande ${command.name}`
-            );
+        function msConv(value) {
+            return value * 1000;
         }
-    }
 
-    timestamps.set(message.author.id, now);
-    setTimeout(() => timestamps.delete(message.author.id), cooldownAmount);
+        function parseString(value, weekday = false) {
+            const localTimeString = new Date(value).toLocaleString("fr-FR", {
+                timeZone: "UTC",
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                weekday: weekday ? "long" : undefined,
+                hour: "numeric",
+                minute: "numeric",
+            });
+            return localTimeString;
+        }
 
-    try {
-        command.execute(message, args);
-    } catch (error) {
-        console.error(error);
-        message.reply(
-            "une erreur s'est produite lors de l'exécution de cette commande !"
-        );
-    }
-});
+    } else if (commandName === "setmeteo") { 
+        setCity = args.join(" ");
+        message.channel.send("Ville par default ajouté")
+    } else if (commandName === "trad") {
+        const phrase = args.join(" ");
+        // message.channel.send(phrase)
+        translate(`${phrase}`, {to: 'fr'}).then(res => {
+            console.log(res.text);
+            message.channel.send(res.text)
+            //=> I speak English
+            console.log(res.from.language.iso);
+            //=> nl
+        }).catch(err => {
+            console.error(err);
+        });
+    } /* else if (commandName === "delete") {
+        const amount = args[0];
+        message.channel.bulkDelete(amount, true);
+    } */
+})
+
+
 
 client.login(process.env.token);

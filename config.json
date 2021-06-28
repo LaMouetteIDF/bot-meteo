@@ -1,7 +1,8 @@
 {
-    "prefix": "!",
-    "apiMeteo": {
+    "prefix" : "!",
+    "apiMeteo" : {
         "units": "metric",
-        "lang": "fr"
+        "lang": "fr",
+        "cityDefault" : "Paris"
     }
 }

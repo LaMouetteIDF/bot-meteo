@@ -1,13 +1,25 @@
 {
-  "name": "bot-meteo",
+  "name": "bot-discord",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
-  "keywords": [],
-  "author": "la mouette",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
   "license": "ISC",
   "dependencies": {
+    "@vitalets/google-translate-api": "^7.0.0",
     "discord.js": "^12.5.3",
     "node-fetch": "^2.6.1"
-  }
+  },
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LaMouetteIDF/bot-meteo.git"
+  },
+  "bugs": {
+    "url": "https://github.com/LaMouetteIDF/bot-meteo/issues"
+  },
+  "homepage": "https://github.com/LaMouetteIDF/bot-meteo#readme"
 }
