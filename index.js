@@ -162,7 +162,7 @@ async function returnApi(city) {
                             description: data.current.weather[0].description,
                             icon: data.current.weather[0].icon,
                             urlIcon: `http://openweathermap.org/img/wn/${data.current.weather[0].icon}@2x.png`,
-                            pop: `${data.hourly[0].pop * 100}%`,
+                            pop: `${parseFloat(100 * (data.hourly[0].pop).toFixed(1))}%`,
                             humidity: `${data.current.humidity}%`,
                             wind_speed: `${data.current.wind_speed.toFixed()}%`,
                             sunrise: parseString(msConv(data.current.sunrise) + msConv(data.timezone_offset), false, false, false, true, true),
@@ -176,7 +176,7 @@ async function returnApi(city) {
                             temp: `${parseFloat(data.hourly[i].temp.toFixed(1))}°C`,
                             dew_point: `${parseFloat(data.hourly[i].dew_point.toFixed(1))}°C`,
                             description: data.hourly[i].weather[0].description,
-                            pop: `${data.hourly[i].pop * 100}%`,
+                            pop: `${parseFloat(100 * (data.hourly[i].pop).toFixed(1))}%`,
                             dt:  parseString(msConv(data.hourly[i].dt) + msConv(data.timezone_offset), false, false, false, true, true)
                         }
                     }
@@ -186,7 +186,7 @@ async function returnApi(city) {
                             min: `${parseFloat(data.daily[i].temp.min.toFixed(1))}°C`, 
                             dew_point: `${parseFloat(data.daily[i].dew_point.toFixed(1))}°C`,
                             description: data.daily[i].weather[0].description,
-                            pop: `${data.daily[i].pop * 100}%`, 
+                            pop: `${parseFloat(100 * (data.daily[i].pop).toFixed(1))}%`,
                             dt: parseString(msConv(data.daily[i].dt) + msConv(data.timezone_offset), true, true, true, false, false)
                         }
                     }
