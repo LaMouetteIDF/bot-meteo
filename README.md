@@ -1,1 +1,1 @@
-# bot-meteo
+# bot-discord-meteo
