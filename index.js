@@ -1,99 +1,273 @@
-const fs = require("fs");
-const { Client, Collection } = require("discord.js");
-const { prefix } = require("./config.json");
-
-const client = new Client();
-client.commands = new Collection();
-client.cooldowns = new Collection();
-
-const commandFolders = fs.readdirSync("./commands");
-
-for (const folder of commandFolders) {
-    const commandFiles = fs
-        .readdirSync(`./commands/${folder}`)
-        .filter((file) => file.endsWith(".js"));
-    for (const file of commandFiles) {
-        const command = require(`./commands/${folder}/${file}`);
-        client.commands.set(command.name, command);
+const { Client, MessageEmbed } = require("discord.js");
+const fetch = require("node-fetch");
+const { prefix, cityDefault } = require("./config.json");
+const bot = new Client();
+const dotenv = require("dotenv");
+dotenv.config();
+let setCity = cityDefault
+/* --------------- Function --------------- */
+function timeStampMs(timestamp, option) {
+    let value = timestamp;
+    switch (option) {
+        case "hourly":
+            value = timestamp * 1000;
+            option = {
+                timeZone: "UTC",
+                hour: "numeric",
+            };
+            break;
+        case "time":
+            value = timestamp * 1000;
+            option = {
+                timeZone: "UTC",
+                hour: "numeric",
+                minute: "numeric",
+            };
+            break;
+        case "daily":
+            value = timestamp * 1000;
+            option = {
+                timeZone: "UTC",
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+            };
+            break;
+        default:
+            option = {
+                timeZone: "UTC",
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+                hour: "numeric",
+                minute: "numeric",
+                year: "numeric",
+            };
+            break;
     }
+    const date = new Date(value).toLocaleString("fr-FR", option);
+    if (date === "00 h") {
+        return new Date(value).toLocaleString("fr-FR", {
+            timeZone: "UTC",
+            weekday: "short",
+            day: "numeric",
+        });
+    }
+    return date;
 }
-
-client.once("ready", () => {
-    console.log("Ready!");
+/* ---------------| Function |--------------- */
+/* --------------- Api geo --------------- */
+async function callApiGeo(q, appid) {
+    const url = new URL(`http://api.openweathermap.org/geo/1.0/direct`);
+    const searchParams = {
+        appid,
+        limit: 1,
+        q: q,
+    };
+    url.search = new URLSearchParams(searchParams).toString();
+    const res = await fetch(url).catch((err) => {return err.code;});
+    if (res === "ENOTFOUND") return res;
+    const status = {
+        response: res.ok,
+        cod: res.status,
+        description: res.statusText,
+        apiName: "geo/direct",
+    };
+    if (!res.ok) {
+        const error = {
+            status: status
+        };
+        return error;
+    }
+    const data = await res.json();
+    const d = data[0];
+    const nomVille = d.local_names ? d.local_names.fr : undefined
+    const geo = {
+        name: nomVille ? nomVille : d.name,
+        country: d.country,
+        flag: `http://www.countryflags.io/${d.country.toLowerCase()}/flat/64.png`,
+        locate: {
+            lat: d.lat,
+            lon: d.lon,
+        },
+        status,
+    };
+    return geo;
+}
+/* ---------------| Api geo |--------------- */
+/* --------------- Api onecall --------------- */
+async function callApiData(locate, appid) {
+    const url = new URL(`https://api.openweathermap.org/data/2.5/onecall`);
+    const searchParams = {
+        appid,
+        exclude: "minutely",
+        units: "metric",
+        lang: "fr",
+        lat: locate.lat,
+        lon: locate.lon,
+    };
+    url.search = new URLSearchParams(searchParams).toString();
+    const res = await fetch(url).catch((err) => {return err.code;});
+    if (res === "ENOTFOUND") return res;
+    const status = {
+        response: res.ok,
+        cod: res.status,
+        description: res.statusText,
+        apiName: "data/onecall",
+    };
+    if (!res.ok) {
+        const error = {
+            status: status
+        };
+        return error;
+    }
+    const data = await res.json();
+    const d = data;
+    const onecall = {
+        current: {
+            temp: `${parseFloat(d.current.temp.toFixed(1))}°C`,
+            temp_max: `${parseFloat(d.daily[0].temp.max.toFixed(1))}°C`,
+            temp_min: `${parseFloat(d.daily[0].temp.min.toFixed(1))}°C`,
+            description: d.current.weather[0].description,
+            icon: d.current.weather[0].icon,
+            urlIcon: `http://openweathermap.org/img/wn/${d.current.weather[0].icon}@2x.png`,
+            pop: `${(d.hourly[0].pop * 100).toFixed(0)}%`,
+            humidity: `${d.current.humidity}%`,
+            wind_speed: `${d.current.wind_speed.toFixed()}%`,
+            timezone: d.timezone,
+            timezone_local: timeStampMs(Date.now() + d.timezone_offset * 1000),
+            sunrise: timeStampMs(d.current.sunrise + d.timezone_offset, "time"),
+            sunset: timeStampMs(d.current.sunset + d.timezone_offset, "time"),
+        },
+        hourly: [],
+        daily: [],
+        status,
+    };
+    for (let i = 0; i < d.hourly.length; i++) {
+        onecall.hourly[i] = {
+            temp: `${parseFloat(d.hourly[i].temp.toFixed(1))}°C`,
+            description: d.hourly[i].weather[0].description,
+            pop: `${(d.hourly[i].pop * 100).toFixed(0)}%`,
+            dt: timeStampMs(d.hourly[i].dt + d.timezone_offset, "hourly"),
+        };
+    }
+    for (let i = 0; i < d.daily.length; i++) {
+        onecall.daily[i] = {
+            max: `${parseFloat(d.daily[i].temp.max.toFixed(1))}°C`,
+            min: `${parseFloat(d.daily[i].temp.min.toFixed(1))}°C`,
+            description: d.daily[i].weather[0].description,
+            pop: `${(d.daily[i].pop * 100).toFixed(0)}%`,
+            dt: timeStampMs(d.daily[i].dt + d.timezone_offset, "daily"),
+        };
+    }
+    return onecall;
+}
+/* ---------------| Api onecall |--------------- */
+/* --------------- Bot Discord --------------- */
+bot.once("ready", () => {
+    console.log(`Bot connecté avec ${bot.user.tag}`);
 });
-
-client.on("message", (message) => {
+bot.on("message", async (message) => {
     if (!message.content.startsWith(prefix) || message.author.bot) return;
-
     const args = message.content.slice(prefix.length).trim().split(/ +/);
-    const commandName = args.shift().toLowerCase();
+    const command = args.shift().toLowerCase();
 
-    const command =
-        client.commands.get(commandName) ||
-        client.commands.find(
-            (cmd) => cmd.aliases && cmd.aliases.includes(commandName)
-        );
-
-    if (!command) return;
-
-    if (command.guildOnly && message.channel.type === "dm") {
-        return message.reply(
-            "Je ne peux pas exécuter cette commande dans les DM !"
-        );
-    }
-
-    if (command.permissions) {
-        const authorPerms = message.channel.permissionsFor(message.author);
-        if (!authorPerms || !authorPerms.has(command.permissions)) {
-            return message.reply("Tu ne peux pas faire ça!");
+    if (command === "locate") {
+        let city = args.join(" ");
+        if (city === "") return console.log("Champ vide");
+        async function callApi(q, appid) {
+            const g = await callApiGeo(q, appid)
+            if (!g.status.response) return console.log("Ville inconnue");
+            const locateEmbed = new MessageEmbed()
+                .setColor('#00A2E8')
+                .setTitle(`${g.name}, ${g.country}`)
+                .setThumbnail(`${g.flag}`)
+                .addFields(
+                    { name: "Latitude", value: g.locate.lat, inline: true},
+                    { name: "Longitude", value: g.locate.lon, inline: true}
+                )
+            message.channel.send(locateEmbed)
         }
-    }
-
-    if (command.args && !args.length) {
-        let reply = `Vous n'avez fourni aucun argument, ${message.author}!`;
-
-        if (command.usage) {
-            reply += `\nL'utilisation appropriée serait : \`${prefix}${command.name} ${command.usage}\``;
+        callApi(city, process.env.APPID);
+    } else if (command === "setmeteo") {
+        let city = args.join(" ").toLowerCase();
+        if (city === "") {
+            const d = setCity;
+            const setMeteoEmbed = new MessageEmbed()
+                .setColor('#00A2E8')
+                .setTitle(`!setmeteo`)
+                .setThumbnail(`${d.flag}`)
+                .addFields(
+                    {name: `Ville`, value: `${d.name}`, inline: true},
+                    {name: `Pays`, value: `${d.country}`, inline: true},
+                )
+            return message.channel.send(setMeteoEmbed)
         }
-
-        return message.channel.send(reply);
-    }
-
-    const { cooldowns } = client;
-
-    if (!cooldowns.has(command.name)) {
-        cooldowns.set(command.name, new Collection());
-    }
-
-    const now = Date.now();
-    const timestamps = cooldowns.get(command.name);
-    const cooldownAmount = (command.cooldown || 3) * 1000;
-
-    if (timestamps.has(message.author.id)) {
-        const expirationTime =
-            timestamps.get(message.author.id) + cooldownAmount;
-
-        if (now < expirationTime) {
-            const timeLeft = (expirationTime - now) / 1000;
-            return message.reply(
-                `S'il vous plaît, attendez ${timeLeft.toFixed(
-                    1
-                )} seconde(s) avant de réutiliser la commande ${command.name}`
-            );
+        async function callApi(q, appid) {
+            const g = await callApiGeo(q, appid)
+            if (!g.status.response) return console.log("Ville inconnue");
+            setCity = {
+                name: g.name,
+                country: g.country,
+                flag: g.flag,
+            };
+            const d = setCity;
+            const setMeteoEmbed = new MessageEmbed()
+                .setColor('#00A2E8')
+                .setTitle(`!setmeteo`)
+                .setThumbnail(`${d.flag}`)
+                .addFields(
+                    {name: `Ville`, value: `${d.name}`, inline: true},
+                    {name: `Pays`, value: `${d.country}`, inline: true},
+                )
+            message.channel.send(setMeteoEmbed);
         }
+        callApi(city, process.env.APPID);
+    } else if (command === "meteo") {
+        let city = args.length ? args.join(" ") : `${setCity.name}, ${setCity.country}`;
+        async function callApi(q, appid) {
+            const g = await callApiGeo(q, appid);
+            if (g === "ENOTFOUND") return console.log(g);
+            if (!g.status.response) return console.log(g.status);
+            const d = await callApiData(g.locate, appid);
+            if (d === "ENOTFOUND") return console.log(d);
+            if (!d.status.response) { 
+                const err = {
+                    geoErr: g.status,
+                    dataErr: d.status
+                }
+                return console.log(err);
+            }
+            const meteoEmbed = new MessageEmbed()
+                .setColor(`${d.current.icon.includes("n") ? '#3F48CC' : '#00A2E8'}`)
+                .setTitle(`${d.current.temp}`)
+                .setAuthor(`${g.name}, ${g.country}`)
+                .setDescription(`${d.current.description}`)
+                .setThumbnail(`${d.current.urlIcon}`)
+                .addFields(
+                    { name: 'Humidité  💦', value: `${d.current.humidity}`, inline: true },
+                    { name: 'Vent  💨', value: `${d.current.wind_speed}`, inline: true },
+                    { name: 'Précipitations  ☔', value: `${d.current.pop}`, inline: true }
+                )
+                .addFields(
+                    { name: 'Max | Min  🌡', value: `${d.current.temp_max} | ${d.current.temp_min}`, inline: true},
+                    { name: 'Lever du soleil  ☀', value: `${d.current.sunrise}`, inline: true},
+                    { name: 'Coucher du soleil  🌑', value: `${d.current.sunset}`, inline: true}
+                )
+                .setFooter(`${d.current.timezone}  ●  ${d.current.timezone_local}`, `${g.flag}`);
+            meteoEmbed.addField("\u200b", '🕐 ==== Prévisions heure par heure ==== 🕐', false);
+            for (let i = 0; i < 6; i++) {
+                meteoEmbed.addField(`${d.hourly[i] === d.hourly[0] ? "Maintenant" : d.hourly[i].dt}`, `${d.hourly[i].temp}  \n${d.hourly[i].description}\n${d.hourly[i].pop}  ☔`, true)
+            }
+            meteoEmbed.addField("\u200b", '🌥 ==== Prévisions quotidienne ==== 🌥', false)
+            for (let i = 0; i < 6; i++) {
+                meteoEmbed.addField(`${d.daily[i] === d.daily[0] ? "Aujourd'hui" : d.daily[i].dt}`, `${d.daily[i].max} | ${d.daily[i].min}\n${d.daily[i].description}\n${d.daily[i].pop}  ☔`, true)
+            }
+            meteoEmbed.addField('\u200b', `Fuseau horaire du pays`, false)
+            message.channel.send(meteoEmbed);
+        }
+        callApi(city, process.env.APPID);
     }
-
-    timestamps.set(message.author.id, now);
-    setTimeout(() => timestamps.delete(message.author.id), cooldownAmount);
-
-    try {
-        command.execute(message, args);
-    } catch (error) {
-        console.error(error);
-        message.reply(
-            "une erreur s'est produite lors de l'exécution de cette commande !"
-        );
-    }
-});
-
-client.login(process.env.token);
+})
+bot.login(process.env.TOKEN);
+/* ---------------| Bot Discord |--------------- */

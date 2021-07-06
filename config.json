@@ -1,7 +1,8 @@
 {
-    "prefix": "!",
-    "apiMeteo": {
-        "units": "metric",
-        "lang": "fr"
+    "prefix" : "!",
+    "cityDefault" : {
+        "name" : "Paris",
+        "country" : "FR",
+        "flag" : "http://www.countryflags.io/fr/flat/64.png"
     }
 }
